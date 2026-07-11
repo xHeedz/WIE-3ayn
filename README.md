@@ -1,76 +1,116 @@
-# 3ayn Backend — SAM + Java 21
+<p align="center">
+  <img src="files/3ayn-logo-transparent.png" width="220" alt="3ayn عين logo">
+</p>
 
-Six endpoints, one deploy. Region: eu-west-2.
+<h1 align="center">3ayn عين</h1>
 
-## Endpoints (all POST, JSON, CORS enabled)
+<p align="center">
+  <b>A real-time AI social awareness assistant for blind and low-vision users — Arabic-first.</b><br>
+  Seeing AI tells you what's around you. <b>3ayn tells you what's happening around you.</b>
+</p>
 
-| Path      | Body                                   | Returns                | AWS service        |
-|-----------|----------------------------------------|------------------------|--------------------|
-| /ask      | { image, lang, question? }             | { text }               | Bedrock Nova Lite  |
-| /read     | { image, lang }                        | { text }               | Textract           |
-| /find     | { image, object, objectAr?, lang }     | { text }               | Rekognition Labels |
-| /who      | { image, lang }                        | { text, match }        | Rekognition Faces  |
-| /enroll   | { image, name, relation }              | { text, faceId }       | Rekognition + DynamoDB |
-| /speak    | { text, lang }                         | { audio: base64 mp3 }  | Polly              |
+<p align="center">
+  Built for the Amazon Industry Program 2026 · AWS Serverless · Java 21 · MediaPipe
+</p>
 
-`image` = base64 JPEG (raw base64 or full data URL — both accepted).
+---
 
-## Before first deploy — do these or it WILL fail
+## What it does
 
-1. **Enable Bedrock model access**: AWS Console -> Bedrock -> Model access ->
-   request access to **Amazon Nova Lite**. Takes a minute, one-time.
-2. If Nova Lite is not served from eu-west-2 in your account, the EU
-   cross-region inference profile `eu.amazon.nova-lite-v1:0` (already the
-   default MODEL_ID) routes it. If the Converse call errors with a model-id
-   message, check the exact profile id in the Bedrock console and update
-   MODEL_ID in template.yaml.
-3. Polly voices: default is Hala (neural, ar-AE Gulf Arabic). Zeina (the
-   classic ar-SA voice) is STANDARD engine only — to use her, set
-   POLLY_VOICE=Zeina, POLLY_ENGINE=standard in template.yaml Globals.
+Existing accessibility apps are reactive and object-focused: the user taps, the app describes objects. 3ayn is **proactive and socially focused** — it watches continuously and narrates social events out loud, in Arabic, the moment they happen:
 
-## Build & deploy
+| Event | Narration |
+|---|---|
+| Someone approaches | شخص يقترب منك |
+| Someone extends a hand | شخص يمد يده نحوك |
+| Someone appears in front of you | شخص أمامك |
+| Crowd / quiet | المكان مزدحم / المكان هادئ |
+| A known person is recognized | أمامك ماريتا، أختك |
+
+Plus three on-demand modes: **Ask** (describe my surroundings), **Read** (read the text in front of me), and **Find** (where is my bottle? → *"إلى يسارك"*).
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/home-live.png" width="330" alt="Home screen with live detection and event log">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/ask.png" width="330" alt="Ask screen">
+</p>
+
+## The core architecture decision
+
+A cloud round trip takes 1–3 seconds. *"Someone is extending a hand toward you"* narrated 3 seconds late is useless — so 3ayn splits by **latency requirement**:
+
+```
+ LATENCY-CRITICAL (continuous)          LATENCY-TOLERANT (user-initiated)
+ ─────────────────────────────          ──────────────────────────────────
+ MediaPipe pose estimation               Ask   →  Bedrock Nova 2 Lite
+ + geometric heuristics                  Read  →  Textract
+ runs IN THE BROWSER                     Find  →  Rekognition Labels
+ zero network calls                      Who   →  Rekognition Faces
+ instant narration                       Speak →  Polly (Arabic neural voice)
+```
+
+Real-time narration never waits for a network. Everything the user explicitly asks for runs on AWS, where managed AI earns its latency.
+
+## AWS services used
+
+**Bedrock (Nova 2 Lite)** scene description · **Textract** OCR · **Rekognition** object labels + face matching · **Polly** Arabic TTS · **Lambda** (7 functions, Java 21) · **API Gateway** · **DynamoDB** (users + face profiles) · **SAM** infrastructure-as-code · **Amplify** hosting
+
+## Repository structure
+
+```
+3ayn/
+├── files/
+│   └── 3ayn-app.html          ← the entire frontend (single file)
+├── 3ayn-backend/
+│   ├── template.yaml          ← the whole AWS stack, declared
+│   ├── samconfig.toml
+│   └── ThreeAynFunction/      ← Java 21 handlers (7 endpoints)
+└── docs/                      ← technical report, screenshots
+```
+
+## Run the frontend
+
+```bash
+cd files
+python -m http.server 8000
+# open http://localhost:8000/3ayn-app.html  (camera requires localhost or HTTPS)
+```
+
+Register with your name, then paste the backend URL in **Settings → Test connection**.
+
+## Deploy the backend
 
 ```bash
 cd 3ayn-backend
 sam build
-sam deploy --guided     # stack name: threeayn, region: eu-west-2, accept the rest
+sam deploy --guided        # stack: threeayn, region: eu-west-2
 ```
 
-Copy the `ApiBaseUrl` output. Paste it into the app's Settings tab.
+Copy the `ApiBaseUrl` output into the app's Settings. Full endpoint contracts, smoke tests, and cost notes: [`3ayn-backend/README.md`](3ayn-backend/README.md).
 
-## Smoke tests
+## API
 
-```bash
-BASE=https://<api-id>.execute-api.eu-west-2.amazonaws.com/Prod
-IMG=$(base64 -w0 test.jpg)
+| Endpoint | Service | Returns |
+|---|---|---|
+| `POST /ask` | Bedrock Nova 2 Lite | Arabic/English scene description |
+| `POST /read` | Textract | Text in frame, read aloud |
+| `POST /find` | Rekognition Labels | Object + direction (left/right/front) |
+| `POST /who` | Rekognition Faces | Name + relation of enrolled person |
+| `POST /enroll` | Rekognition + DynamoDB | Caregiver enrolls a known face |
+| `POST /user`, `GET /user/{id}` | DynamoDB | Wearer profile + spoken welcome |
+| `POST /speak` | Polly | Base64 MP3, Arabic neural voice |
 
-curl -s $BASE/speak -H 'Content-Type: application/json' \
-  -d '{"text":"مرحبا، أنا عين","lang":"ar"}' | head -c 200
+## Privacy & consent
 
-curl -s $BASE/ask -H 'Content-Type: application/json' \
-  -d "{\"image\":\"$IMG\",\"lang\":\"ar\"}"
+Face recognition matches **only people deliberately enrolled by a caregiver**, with their knowledge. Strangers are never stored, fingerprinted, or clustered. No authentication by design — 3ayn is a single-wearer assistive device; a profile personalizes narration, it is not an account.
 
-curl -s $BASE/read -H 'Content-Type: application/json' \
-  -d "{\"image\":\"$IMG\",\"lang\":\"ar\"}"
+## Roadmap
 
-curl -s $BASE/find -H 'Content-Type: application/json' \
-  -d "{\"image\":\"$IMG\",\"object\":\"Bottle\",\"objectAr\":\"قنينة\",\"lang\":\"ar\"}"
-```
+Event history per wearer → caregiver dashboard (live log, alerts) · "someone is speaking to you" detection · voice-command language switching (Transcribe) · smart cane companion (ESP32 + ultrasonic) · smart glasses form factor.
 
-Test /speak first — it needs no image and proves the whole pipeline.
+## Team
 
-## Cost guardrails (free-tier awareness)
-
-- Textract: 1,000 pages/month free (first 3 months). Fine for demo use.
-- Rekognition: 5,000 images/month free (first 12 months).
-- Polly: 5M standard / 1M neural chars/month free (first 12 months).
-- Bedrock Nova Lite: NO free tier — pay per token, but Lite is the cheapest
-  multimodal model (~fractions of a cent per image). Do NOT wire /ask into a
-  continuous loop; it is tap-to-ask only. The always-on social loop stays
-  on-device (MediaPipe) at zero cloud cost — that is deliberate.
-
-## Architecture note for the report
-
-Latency-critical narration (social intent) never leaves the device.
-Cloud endpoints handle only user-initiated, latency-tolerant requests.
-One Maven module, six thin handlers, shared ApiResponse/RequestParser utils.
+Built by **Team 8** — Amazon Industry Program 2026 (IEEE / Women in Engineering, AUB).
+Software & cloud: Carla Jaffal · ML: 3 engineers · Business: 1 analyst.
