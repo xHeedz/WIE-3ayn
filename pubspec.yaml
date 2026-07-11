@@ -1,0 +1,20 @@
+name: three_ayn
+description: "3ayn — the eyes of a blind person. Live social awareness, scene description, reading, and finding, with instant Arabic/English narration."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  image_picker: ^1.0.0   # photo capture for Ask / Find / Read / Enroll
+  http: ^1.0.0           # backend calls
+  flutter_tts: ^4.0.0    # instant on-device narration
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
