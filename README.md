@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="files/3ayn-logo-transparent.png" width="220" alt="3ayn عين logo">
-</p>
+
 
 <h1 align="center">3ayn عين</h1>
 
@@ -29,13 +27,7 @@ Existing accessibility apps are reactive and object-focused: the user taps, the 
 
 Plus three on-demand modes: **Ask** (describe my surroundings), **Read** (read the text in front of me), and **Find** (where is my bottle? → *"إلى يسارك"*).
 
-## Screenshots
 
-<p align="center">
-  <img src="docs/screenshots/home-live.png" width="330" alt="Home screen with live detection and event log">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/ask.png" width="330" alt="Ask screen">
-</p>
 
 ## The core architecture decision
 
