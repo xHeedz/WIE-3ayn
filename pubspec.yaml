@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  speech_to_text: ^7.4.0
   image_picker: ^1.0.0   # photo capture for Ask / Find / Read / Enroll
   http: ^1.0.0           # backend calls
   flutter_tts: ^4.0.0    # instant on-device narration
