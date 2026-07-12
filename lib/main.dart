@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+
 import 'app_state.dart';
 import 'narrator.dart';
 import 'screens.dart';
@@ -50,15 +50,10 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
-
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _speechAvailable = false;
-  bool _isListening = false;
   
   @override
   void initState() {
     super.initState();
-    _initSpeech();
     final s = AppState.instance;
     Narrator.instance.setLang(s.lang).then((_) {
       Narrator.instance.say(
@@ -66,81 +61,8 @@ class _MainShellState extends State<MainShell> {
       );
     });
   }
-Future<void> _initSpeech() async {
-  final available = await _speech.initialize();
 
-  if (!mounted) return;
 
-  setState(() {
-    _speechAvailable = available;
-  });
-}
-  void _handleVoiceCommand(String words) {
-  final command = words
-      .toLowerCase()
-      .trim()
-      .replaceAll('أ', 'ا')
-      .replaceAll('إ', 'ا')
-      .replaceAll('آ', 'ا');
-
-  int? page;
-
-  if (command.contains('home') || command.contains('الرئيسية')) {
-    page = 0;
-  } else if (command.contains('ask') || command.contains('اسال')) {
-    page = 1;
-  } else if (command.contains('find') ||
-      command.contains('دلني') ||
-      command.contains('ابحث')) {
-    page = 2;
-  } else if (command.contains('read') || command.contains('اقرا')) {
-    page = 3;
-  } else if (command.contains('settings') ||
-      command.contains('الاعدادات')) {
-    page = 4;
-  }
-
-  if (page != null && mounted) {
-    setState(() {
-      _index = page!;
-    });
-  }
-}
-Future<void> _toggleListening() async {
-  if (!_speechAvailable) {
-    await _initSpeech();
-    if (!_speechAvailable) return;
-  }
-
-  if (_isListening) {
-    await _speech.stop();
-
-    if (!mounted) return;
-    setState(() {
-      _isListening = false;
-    });
-  } else {
-    await _speech.listen(
-      localeId: AppState.instance.isAr ? 'ar_LB' : 'en_US',
-      onResult: (result) {
-        if (result.finalResult) {
-          _handleVoiceCommand(result.recognizedWords);
-
-          if (mounted) {
-            setState(() {
-              _isListening = false;
-            });
-          }
-        }
-      },
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _isListening = true;
-    });
-  }
-}
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -156,11 +78,6 @@ Future<void> _toggleListening() async {
         ];
         return Scaffold(
           body: SafeArea(child: pages[_index]),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _toggleListening,
-            tooltip: ar ? 'الأوامر الصوتية' : 'Voice commands',
-            child: Icon(_isListening ? Icons.stop : Icons.mic),
-          ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: (i) => setState(() => _index = i),
