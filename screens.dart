@@ -145,6 +145,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String _lang = 'ar';
 
   @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final ar = _lang == 'ar';
     return Scaffold(
@@ -286,6 +292,29 @@ class _HomeScreenState extends State<HomeScreen> {
     Narrator.instance.say(event); // instant on-device voice
   }
 
+  Future<void> _quick(String mode) async {
+    await _runVisionAction(
+      action: (b64, lang) {
+        switch (mode) {
+          case 'find':
+            return _api.find(b64, lang, 'object');
+          case 'read':
+            return _api.readText(b64, lang);
+          case 'ask':
+          default:
+            return _api.describeScene(b64, lang);
+        }
+      },
+      onStatus: (status) =>
+          setState(() => _lastNarration = status.isEmpty ? _lastNarration : status),
+      onResult: (result) => setState(() {
+        _lastNarration = result;
+        _log.insert(0, result);
+        if (_log.length > 8) _log.removeLast();
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -388,28 +417,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-
-  Future<void> _quick(String mode) async {
-    await _runVisionAction(
-      action: (b64, lang) {
-        switch (mode) {
-          case 'find':
-            return _api.find(b64, lang, 'object');
-          case 'read':
-            return _api.readText(b64, lang);
-          case 'ask':
-          default:
-            return _api.describeScene(b64, lang);
-        }
-      },
-      onStatus: (status) => setState(() => _lastNarration = status.isEmpty ? _lastNarration : status),
-      onResult: (result) => setState(() {
-        _lastNarration = result;
-        _log.insert(0, result);
-        if (_log.length > 8) _log.removeLast();
-      }),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -450,8 +457,13 @@ class _AskScreenState extends State<AskScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  void _go(Future<String> Function(String, String) action) {
+    _runVisionAction(
+      action: action,
+      onStatus: (s) => setState(() => _status = s),
+      onResult: (r) => setState(() => _status = r),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -485,14 +497,6 @@ class _AskScreenState extends State<AskScreen> {
       ],
     );
   }
-
-  void _go(Future<String> Function(String, String) action) {
-    _runVisionAction(
-      action: action,
-      onStatus: (s) => setState(() => _status = s),
-      onResult: (r) => setState(() => _status = r),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -520,50 +524,45 @@ class _FindScreenState extends State<FindScreen> {
   ];
 
   @override
-void initState() {
-  super.initState();
-  VoiceCommandBus.command.addListener(_handleVoiceCommand);
-}
-
-@override
-void dispose() {
-  VoiceCommandBus.command.removeListener(_handleVoiceCommand);
-  super.dispose();
-}
-
-void _handleVoiceCommand() {
-  final command = VoiceCommandBus.command.value;
-
-  if (command == null ||
-      command.type != VoiceActionType.findObject ||
-      command.objectName == null) {
-    return;
+  void initState() {
+    super.initState();
+    VoiceCommandBus.command.addListener(_handleVoiceCommand);
   }
 
-  final targetIndex = _targets.indexWhere(
-    (target) =>
-        target[0].toLowerCase() == command.objectName!.toLowerCase(),
-  );
+  @override
+  void dispose() {
+    VoiceCommandBus.command.removeListener(_handleVoiceCommand);
+    super.dispose();
+  }
 
-  if (targetIndex == -1) return;
+  void _handleVoiceCommand() {
+    final command = VoiceCommandBus.command.value;
 
-  VoiceCommandBus.command.value = null;
+    if (command == null ||
+        command.type != VoiceActionType.findObject ||
+        command.objectName == null) {
+      return;
+    }
 
-  setState(() {
-    _selected = targetIndex;
-  });
+    final targetIndex = _targets.indexWhere(
+      (target) => target[0].toLowerCase() == command.objectName!.toLowerCase(),
+    );
 
-  _findTarget(_targets[targetIndex][0]);
-}
+    if (targetIndex == -1) return;
 
-void _findTarget(String target) {
-  _runVisionAction(
-    action: (b64, lang) => _api.find(b64, lang, target),
-    onStatus: (s) => setState(() => _status = s),
-    onResult: (r) => setState(() => _status = r),
-  );
-}
-  
+    VoiceCommandBus.command.value = null;
+    setState(() => _selected = targetIndex);
+    _findTarget(_targets[targetIndex][0]);
+  }
+
+  void _findTarget(String target) {
+    _runVisionAction(
+      action: (b64, lang) => _api.find(b64, lang, target),
+      onStatus: (s) => setState(() => _status = s),
+      onResult: (r) => setState(() => _status = r),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ar = AppState.instance.isAr;
@@ -591,7 +590,6 @@ void _findTarget(String target) {
           label: ar ? 'دلّني عليه' : 'Find it',
           icon: Icons.search,
           onTap: () => _findTarget(_targets[_selected][0]),
-          ),
         ),
         const SizedBox(height: 24),
         _ResultBox(_status),
@@ -619,7 +617,8 @@ class ReadScreen extends StatefulWidget {
 
 class _ReadScreenState extends State<ReadScreen> {
   String _status = '';
-    @override
+
+  @override
   void initState() {
     super.initState();
     VoiceCommandBus.command.addListener(_handleVoiceCommand);
@@ -633,11 +632,9 @@ class _ReadScreenState extends State<ReadScreen> {
 
   void _handleVoiceCommand() {
     final command = VoiceCommandBus.command.value;
-
     if (command == null || command.type != VoiceActionType.readText) {
       return;
     }
-
     VoiceCommandBus.command.value = null;
     _readText();
   }
@@ -649,7 +646,6 @@ class _ReadScreenState extends State<ReadScreen> {
       onResult: (r) => setState(() => _status = r),
     );
   }
-  
 
   @override
   Widget build(BuildContext context) {
@@ -664,7 +660,6 @@ class _ReadScreenState extends State<ReadScreen> {
           label: ar ? 'اقرأ لي النص أمامي' : 'Read the text in front of me',
           icon: Icons.menu_book,
           onTap: _readText,
-          ),
         ),
         const SizedBox(height: 24),
         _ResultBox(_status),
@@ -718,6 +713,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _enrollNameCtrl = TextEditingController();
   String? _enrollFace; // base64 of captured face
 
+  // Local buffers for the two sliders. Dragging these updates ONLY this
+  // screen's own setState — AppState.update() (which rebuilds the whole
+  // app shell via the ListenableBuilder in main.dart) is called once, on
+  // release, via onChangeEnd. This is what fixes the drag lag: previously
+  // every pixel of movement notified AppState and rebuilt the entire
+  // Scaffold/NavigationBar/FAB tree many times a second.
+  late double _approach = AppState.instance.approachSensitivity;
+  late double _handExtend = AppState.instance.handExtendThreshold;
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _enrollNameCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = AppState.instance;
@@ -769,15 +780,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text(ar ? 'حساسية الاقتراب' : 'Approach sensitivity',
             style: const TextStyle(fontSize: 14)),
         Slider(
-          value: s.approachSensitivity,
-          onChanged: (v) => s.update(() => s.approachSensitivity = v),
+          value: _approach,
+          onChanged: (v) => setState(() => _approach = v),
+          onChangeEnd: (v) => s.update(() => s.approachSensitivity = v),
         ),
         Text(ar ? 'عتبة مدّ اليد (Δz)' : 'Hand-extend threshold (Δz)',
             style: const TextStyle(fontSize: 14)),
         Slider(
-          value: s.handExtendThreshold,
+          value: _handExtend,
           max: 0.5,
-          onChanged: (v) => s.update(() => s.handExtendThreshold = v),
+          onChanged: (v) => setState(() => _handExtend = v),
+          onChangeEnd: (v) => s.update(() => s.handExtendThreshold = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -785,6 +798,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           value: s.showDebug,
           onChanged: (v) => s.update(() => s.showDebug = v),
         ),
+        if (s.showDebug)
+          Text(
+            'ratio ${_approach.toStringAsFixed(2)}  ·  Δz ${_handExtend.toStringAsFixed(2)}',
+            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+          ),
 
         const SizedBox(height: 20),
         const SectionLabel('Backend'),
@@ -794,6 +812,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             labelText: ar ? 'رابط الخادم' : 'Backend URL',
             border: const OutlineInputBorder(),
           ),
+          // Text fields already manage their own controller state, so it's
+          // safe to commit on every keystroke here — this does NOT rebuild
+          // the app shell the way the sliders did, since AppState.update()
+          // only fires a couple of times per word typed, not per pixel.
           onChanged: (v) => s.update(() => s.baseUrl = v.trim()),
         ),
         SwitchListTile(
