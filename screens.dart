@@ -581,7 +581,10 @@ class _FindScreenState extends State<FindScreen> {
                 label: Text(ar ? _targets[i][1] : _targets[i][0],
                     style: const TextStyle(fontSize: 16)),
                 selected: _selected == i,
-                onSelected: (_) => setState(() => _selected = i),
+                onSelected: (_) {
+                  setState(() => _selected = i);
+                  _findTarget(_targets[i][0]);
+                },
               ),
           ],
         ),
