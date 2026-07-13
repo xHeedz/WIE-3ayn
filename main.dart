@@ -54,7 +54,7 @@ class _MainShellState extends State<MainShell> {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _speechAvailable = false;
   bool _isListening = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -66,241 +66,192 @@ class _MainShellState extends State<MainShell> {
       );
     });
   }
-Future<void> _initSpeech() async {
-  final available = await _speech.initialize();
 
-  if (!mounted) return;
-
-  setState(() {
-    _speechAvailable = available;
-  });
-}
-void _handleVoiceCommand(String words) {
-  final command = words
-      .toLowerCase()
-      .trim()
-      .replaceAll('أ', 'ا')
-      .replaceAll('إ', 'ا')
-      .replaceAll('آ', 'ا')
-      .replaceAll('ة', 'ه');
-
-  bool containsAny(List<String> phrases) {
-    return phrases.any((phrase) => command.contains(phrase));
-  }
-
-  void openPage(int page) {
+  Future<void> _initSpeech() async {
+    final available = await _speech.initialize();
     if (!mounted) return;
-
-    setState(() {
-      _index = page;
-    });
+    setState(() => _speechAvailable = available);
   }
 
-  void runAction(int page, VoiceCommand voiceCommand) {
-    if (!mounted) return;
-
-    setState(() {
-      _index = page;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      VoiceCommandBus.send(voiceCommand);
-    });
+  /// Normalises common Arabic letter variants (hamza forms, taa marbuta)
+  /// so "أين", "اين" style spelling differences all match the same
+  /// keyword list below.
+  String _normalize(String input) {
+    return input
+        .toLowerCase()
+        .trim()
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ة', 'ه');
   }
 
-  // Describe surroundings
-  if (containsAny([
-    'describe my surroundings',
-    'describe the surroundings',
-    'describe what is around me',
-    'what is around me',
-    'whats around me',
-    'صف ما حولي',
-    'اوصف ما حولي',
-    'ماذا حولي',
-    'شو حولي',
-  ])) {
-    runAction(
-      1,
-      const VoiceCommand(VoiceActionType.describeScene),
+  void _handleVoiceCommand(String words) {
+    final command = _normalize(words);
+
+    bool containsAny(List<String> phrases) =>
+        phrases.any((phrase) => command.contains(phrase));
+
+    void openPage(int page) {
+      if (!mounted) return;
+      setState(() => _index = page);
+    }
+
+    void runAction(int page, VoiceCommand voiceCommand) {
+      if (!mounted) return;
+      setState(() => _index = page);
+      // Wait a frame so the target screen has mounted and attached its
+      // VoiceCommandBus listener before we send the command.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        VoiceCommandBus.send(voiceCommand);
+      });
+    }
+
+    // Describe surroundings
+    if (containsAny([
+      'describe my surroundings',
+      'describe the surroundings',
+      'describe what is around me',
+      'what is around me',
+      'whats around me',
+      'صف ما حولي',
+      'اوصف ما حولي',
+      'ماذا حولي',
+      'شو حولي',
+    ])) {
+      runAction(1, const VoiceCommand(VoiceActionType.describeScene));
+      return;
+    }
+
+    // Identify person
+    if (containsAny([
+      'who is in front of me',
+      'who is this',
+      'who is ahead of me',
+      'من امامي',
+      'مين امامي',
+      'مين قدامي',
+      'من هذا',
+      'مين هيدا',
+    ])) {
+      runAction(1, const VoiceCommand(VoiceActionType.identifyPerson));
+      return;
+    }
+
+    // Read text
+    if (containsAny([
+      'read the text in front of me',
+      'read the text',
+      'read this text',
+      'read this',
+      'اقرا لي النص امامي',
+      'اقرا النص امامي',
+      'اقرا لي النص',
+      'اقرا النص',
+      'اقرا هذا',
+    ])) {
+      runAction(3, const VoiceCommand(VoiceActionType.readText));
+      return;
+    }
+
+    // Find object
+    final findRequested = containsAny([
+      'find',
+      'where is',
+      'where are',
+      'locate',
+      'دلني',
+      'ابحث',
+      'اين',
+      'وين',
+    ]);
+
+    String? objectName;
+    if (containsAny(['bottle', 'water bottle', 'قنينه', 'زجاجه'])) {
+      objectName = 'Bottle';
+    } else if (containsAny(
+        ['phone', 'mobile', 'cell phone', 'هاتف', 'موبايل', 'تلفون', 'تليفون'])) {
+      objectName = 'Phone';
+    } else if (containsAny(['cup', 'mug', 'كوب', 'فنجان'])) {
+      objectName = 'Cup';
+    } else if (containsAny(['chair', 'كرسي'])) {
+      objectName = 'Chair';
+    } else if (containsAny(['door', 'باب'])) {
+      objectName = 'Door';
+    } else if (containsAny(
+        ['bag', 'backpack', 'handbag', 'حقيبه', 'شنطه', 'شنته'])) {
+      objectName = 'Bag';
+    }
+
+    if (findRequested && objectName != null) {
+      runAction(
+        2,
+        VoiceCommand(VoiceActionType.findObject, objectName: objectName),
+      );
+      return;
+    }
+
+    // Plain page navigation (checked after the specific intents above so
+    // e.g. "find my phone" is never swallowed by the generic "find" nav).
+    if (containsAny(['home', 'الرئيسيه'])) {
+      openPage(0);
+      return;
+    }
+    if (containsAny(['ask', 'اسال'])) {
+      openPage(1);
+      return;
+    }
+    if (containsAny(['find', 'دلني', 'ابحث'])) {
+      openPage(2);
+      return;
+    }
+    if (containsAny(['read', 'اقرا'])) {
+      openPage(3);
+      return;
+    }
+    if (containsAny(['settings', 'الاعدادات'])) {
+      openPage(4);
+      return;
+    }
+
+    Narrator.instance.say(
+      AppState.instance.isAr
+          ? 'لم افهم الامر. حاول مره اخرى.'
+          : 'I did not understand the command. Please try again.',
     );
-    return;
   }
 
-  // Identify person
-  if (containsAny([
-    'who is in front of me',
-    'who is this',
-    'who is ahead of me',
-    'من امامي',
-    'مين امامي',
-    'مين قدامي',
-    'من هذا',
-    'مين هيدا',
-  ])) {
-    runAction(
-      1,
-      const VoiceCommand(VoiceActionType.identifyPerson),
-    );
-    return;
-  }
+  Future<void> _toggleListening() async {
+    if (!_speechAvailable) {
+      await _initSpeech();
+      if (!_speechAvailable) return;
+    }
 
-  // Read text
-  if (containsAny([
-    'read the text in front of me',
-    'read the text',
-    'read this text',
-    'read this',
-    'اقرا لي النص امامي',
-    'اقرا النص امامي',
-    'اقرا لي النص',
-    'اقرا النص',
-    'اقرا هذا',
-  ])) {
-    runAction(
-      3,
-      const VoiceCommand(VoiceActionType.readText),
-    );
-    return;
-  }
-
-  // Find object
-  final findRequested = containsAny([
-    'find',
-    'where is',
-    'where are',
-    'locate',
-    'دلني',
-    'ابحث',
-    'اين',
-    'وين',
-  ]);
-
-  String? objectName;
-
-  if (containsAny([
-    'bottle',
-    'water bottle',
-    'قنينه',
-    'زجاجه',
-  ])) {
-    objectName = 'Bottle';
-  } else if (containsAny([
-    'phone',
-    'mobile',
-    'cell phone',
-    'هاتف',
-    'موبايل',
-    'تلفون',
-    'تليفون',
-  ])) {
-    objectName = 'Phone';
-  } else if (containsAny([
-    'cup',
-    'mug',
-    'كوب',
-    'فنجان',
-  ])) {
-    objectName = 'Cup';
-  } else if (containsAny([
-    'chair',
-    'كرسي',
-  ])) {
-    objectName = 'Chair';
-  } else if (containsAny([
-    'door',
-    'باب',
-  ])) {
-    objectName = 'Door';
-  } else if (containsAny([
-    'bag',
-    'backpack',
-    'handbag',
-    'حقيبه',
-    'شنطه',
-    'شنته',
-  ])) {
-    objectName = 'Bag';
-  }
-
-  if (findRequested && objectName != null) {
-    runAction(
-      2,
-      VoiceCommand(
-        VoiceActionType.findObject,
-        objectName: objectName,
-      ),
-    );
-    return;
-  }
-
-  // Page navigation
-  if (containsAny(['home', 'الرئيسيه'])) {
-    openPage(0);
-    return;
-  }
-
-  if (containsAny(['ask', 'اسال'])) {
-    openPage(1);
-    return;
-  }
-
-  if (containsAny(['find', 'دلني', 'ابحث'])) {
-    openPage(2);
-    return;
-  }
-
-  if (containsAny(['read', 'اقرا'])) {
-    openPage(3);
-    return;
-  }
-
-  if (containsAny(['settings', 'الاعدادات'])) {
-    openPage(4);
-    return;
-  }
-
-  Narrator.instance.say(
-    AppState.instance.isAr
-        ? 'لم افهم الامر. حاول مره اخرى.'
-        : 'I did not understand the command. Please try again.',
-  );
-}
-Future<void> _toggleListening() async {
-  if (!_speechAvailable) {
-    await _initSpeech();
-    if (!_speechAvailable) return;
-  }
-
-  if (_isListening) {
-    await _speech.stop();
-
-    if (!mounted) return;
-    setState(() {
-      _isListening = false;
-    });
-  } else {
-    await _speech.listen(
-      localeId: AppState.instance.isAr ? 'ar_LB' : 'en_US',
-      onResult: (result) {
-        if (result.finalResult) {
-          _handleVoiceCommand(result.recognizedWords);
-
-          if (mounted) {
-            setState(() {
-              _isListening = false;
-            });
+    if (_isListening) {
+      await _speech.stop();
+      if (!mounted) return;
+      setState(() => _isListening = false);
+    } else {
+      await _speech.listen(
+        localeId: AppState.instance.isAr ? 'ar_LB' : 'en_US',
+        onResult: (result) {
+          if (result.finalResult) {
+            _handleVoiceCommand(result.recognizedWords);
+            if (mounted) setState(() => _isListening = false);
           }
-        }
-      },
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _isListening = true;
-    });
+        },
+      );
+      if (!mounted) return;
+      setState(() => _isListening = true);
+    }
   }
-}
+
+  @override
+  void dispose() {
+    _speech.stop();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -326,24 +277,29 @@ Future<void> _toggleListening() async {
             onDestinationSelected: (i) => setState(() => _index = i),
             destinations: [
               NavigationDestination(
-                  icon: const Icon(Icons.home_outlined),
-                  selectedIcon: const Icon(Icons.home),
-                  label: ar ? 'الرئيسية' : 'Home'),
+                icon: const Icon(Icons.home_outlined),
+                selectedIcon: const Icon(Icons.home),
+                label: ar ? 'الرئيسية' : 'Home',
+              ),
               NavigationDestination(
-                  icon: const Icon(Icons.mic_none),
-                  selectedIcon: const Icon(Icons.mic),
-                  label: ar ? 'اسأل' : 'Ask'),
+                icon: const Icon(Icons.mic_none),
+                selectedIcon: const Icon(Icons.mic),
+                label: ar ? 'اسأل' : 'Ask',
+              ),
               NavigationDestination(
-                  icon: const Icon(Icons.search),
-                  label: ar ? 'دلّني' : 'Find'),
+                icon: const Icon(Icons.search),
+                label: ar ? 'دلّني' : 'Find',
+              ),
               NavigationDestination(
-                  icon: const Icon(Icons.menu_book_outlined),
-                  selectedIcon: const Icon(Icons.menu_book),
-                  label: ar ? 'اقرأ' : 'Read'),
+                icon: const Icon(Icons.menu_book_outlined),
+                selectedIcon: const Icon(Icons.menu_book),
+                label: ar ? 'اقرأ' : 'Read',
+              ),
               NavigationDestination(
-                  icon: const Icon(Icons.settings_outlined),
-                  selectedIcon: const Icon(Icons.settings),
-                  label: ar ? 'الإعدادات' : 'Settings'),
+                icon: const Icon(Icons.settings_outlined),
+                selectedIcon: const Icon(Icons.settings),
+                label: ar ? 'الإعدادات' : 'Settings',
+              ),
             ],
           ),
         );
