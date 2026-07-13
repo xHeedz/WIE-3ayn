@@ -75,36 +75,196 @@ Future<void> _initSpeech() async {
     _speechAvailable = available;
   });
 }
-  void _handleVoiceCommand(String words) {
+void _handleVoiceCommand(String words) {
   final command = words
       .toLowerCase()
       .trim()
       .replaceAll('أ', 'ا')
       .replaceAll('إ', 'ا')
-      .replaceAll('آ', 'ا');
+      .replaceAll('آ', 'ا')
+      .replaceAll('ة', 'ه');
 
-  int? page;
-
-  if (command.contains('home') || command.contains('الرئيسية')) {
-    page = 0;
-  } else if (command.contains('ask') || command.contains('اسال')) {
-    page = 1;
-  } else if (command.contains('find') ||
-      command.contains('دلني') ||
-      command.contains('ابحث')) {
-    page = 2;
-  } else if (command.contains('read') || command.contains('اقرا')) {
-    page = 3;
-  } else if (command.contains('settings') ||
-      command.contains('الاعدادات')) {
-    page = 4;
+  bool containsAny(List<String> phrases) {
+    return phrases.any((phrase) => command.contains(phrase));
   }
 
-  if (page != null && mounted) {
+  void openPage(int page) {
+    if (!mounted) return;
+
     setState(() {
-      _index = page!;
+      _index = page;
     });
   }
+
+  void runAction(int page, VoiceCommand voiceCommand) {
+    if (!mounted) return;
+
+    setState(() {
+      _index = page;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      VoiceCommandBus.send(voiceCommand);
+    });
+  }
+
+  // Describe surroundings
+  if (containsAny([
+    'describe my surroundings',
+    'describe the surroundings',
+    'describe what is around me',
+    'what is around me',
+    'whats around me',
+    'صف ما حولي',
+    'اوصف ما حولي',
+    'ماذا حولي',
+    'شو حولي',
+  ])) {
+    runAction(
+      1,
+      const VoiceCommand(VoiceActionType.describeScene),
+    );
+    return;
+  }
+
+  // Identify person
+  if (containsAny([
+    'who is in front of me',
+    'who is this',
+    'who is ahead of me',
+    'من امامي',
+    'مين امامي',
+    'مين قدامي',
+    'من هذا',
+    'مين هيدا',
+  ])) {
+    runAction(
+      1,
+      const VoiceCommand(VoiceActionType.identifyPerson),
+    );
+    return;
+  }
+
+  // Read text
+  if (containsAny([
+    'read the text in front of me',
+    'read the text',
+    'read this text',
+    'read this',
+    'اقرا لي النص امامي',
+    'اقرا النص امامي',
+    'اقرا لي النص',
+    'اقرا النص',
+    'اقرا هذا',
+  ])) {
+    runAction(
+      3,
+      const VoiceCommand(VoiceActionType.readText),
+    );
+    return;
+  }
+
+  // Find object
+  final findRequested = containsAny([
+    'find',
+    'where is',
+    'where are',
+    'locate',
+    'دلني',
+    'ابحث',
+    'اين',
+    'وين',
+  ]);
+
+  String? objectName;
+
+  if (containsAny([
+    'bottle',
+    'water bottle',
+    'قنينه',
+    'زجاجه',
+  ])) {
+    objectName = 'Bottle';
+  } else if (containsAny([
+    'phone',
+    'mobile',
+    'cell phone',
+    'هاتف',
+    'موبايل',
+    'تلفون',
+    'تليفون',
+  ])) {
+    objectName = 'Phone';
+  } else if (containsAny([
+    'cup',
+    'mug',
+    'كوب',
+    'فنجان',
+  ])) {
+    objectName = 'Cup';
+  } else if (containsAny([
+    'chair',
+    'كرسي',
+  ])) {
+    objectName = 'Chair';
+  } else if (containsAny([
+    'door',
+    'باب',
+  ])) {
+    objectName = 'Door';
+  } else if (containsAny([
+    'bag',
+    'backpack',
+    'handbag',
+    'حقيبه',
+    'شنطه',
+    'شنته',
+  ])) {
+    objectName = 'Bag';
+  }
+
+  if (findRequested && objectName != null) {
+    runAction(
+      2,
+      VoiceCommand(
+        VoiceActionType.findObject,
+        objectName: objectName,
+      ),
+    );
+    return;
+  }
+
+  // Page navigation
+  if (containsAny(['home', 'الرئيسيه'])) {
+    openPage(0);
+    return;
+  }
+
+  if (containsAny(['ask', 'اسال'])) {
+    openPage(1);
+    return;
+  }
+
+  if (containsAny(['find', 'دلني', 'ابحث'])) {
+    openPage(2);
+    return;
+  }
+
+  if (containsAny(['read', 'اقرا'])) {
+    openPage(3);
+    return;
+  }
+
+  if (containsAny(['settings', 'الاعدادات'])) {
+    openPage(4);
+    return;
+  }
+
+  Narrator.instance.say(
+    AppState.instance.isAr
+        ? 'لم افهم الامر. حاول مره اخرى.'
+        : 'I did not understand the command. Please try again.',
+  );
 }
 Future<void> _toggleListening() async {
   if (!_speechAvailable) {
